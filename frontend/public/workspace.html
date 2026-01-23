@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Workspace</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <h2>Room</h2>
+
+    <div class="upload-box" id="dropZone">
+      <p>Drag and drop<br/>or click here to<br/>add files to<br/>workspace</p>
+      <input type="file" id="file" hidden />
+    </div>
+
+    <button class="primary" onclick="upload()">Upload</button>
+
+    <div class="room-info">
+      <p><b>room ID:</b> <span id="roomIdLabel"></span></p>
+      <p><b>room pass:</b></p>
+      <p><b>total users:</b> <span id="userCount"></span></p>
+      <p><b>host:</b> <span id="hostName"></span></p>
+    </div>
+
+    <button id="killBtn" class="danger" onclick="killRoom()" hidden>
+      Kill Room
+    </button>
+  </aside>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+    <h2>Shared Workspace</h2>
+
+    <div id="files" class="file-grid">
+      <!-- File cards injected here -->
+    </div>
+  </main>
+
+</div>
+
+<script src="webrtc.js"></script>
+<script>
+  // drag & drop hookup
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("file");
+
+  dropZone.onclick = () => fileInput.click();
+
+  dropZone.ondragover = e => {
+    e.preventDefault();
+    dropZone.classList.add("drag");
+  };
+
+  dropZone.ondragleave = () => {
+    dropZone.classList.remove("drag");
+  };
+
+  dropZone.ondrop = e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag");
+    fileInput.files = e.dataTransfer.files;
+  };
+
+  // room info
+  document.getElementById("roomIdLabel").innerText =
+    sessionStorage.getItem("roomId");
+</script>
+
+</body>
+</html>

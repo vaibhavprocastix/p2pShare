@@ -1,10 +1,8 @@
 {
-  "name": "signaling-server",
-  "version": "1.0.0",
+  "name": "fileshare-backend",
   "type": "module",
-  "main": "src/server.js",
   "dependencies": {
-    "ws": "^8.15.1",
-    "uuid": "^9.0.1"
+    "ws": "^8.16.0",
+    "redis": "^4.6.7"
   }
 }

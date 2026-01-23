@@ -1,173 +1,117 @@
-const CHUNK_SIZE = 256 * 1024;
+const ws = new WebSocket("ws://localhost:8081");
 
-let pc, dc, socket, file;
+const roomId = sessionStorage.getItem("roomId");
+const password = sessionStorage.getItem("password");
+const username = sessionStorage.getItem("username");
 
-const rtcConfig = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-};
+const peers = {};
+const localFiles = {};
+let myUserId;
 
-/* =======================
-   SENDER
-======================= */
-window.createRoom = async () => {
-  file = document.getElementById("file").files[0];
-  if (!file) return alert("Select a file first");
-
-  const roomId = crypto.randomUUID();
-  alert("Room ID: " + roomId);
-
-  socket = new WebSocket("ws://localhost:8081");
-  pc = new RTCPeerConnection(rtcConfig);
-
-  dc = pc.createDataChannel("file");
-
-  dc.onopen = () => {
-    console.log("✅ DataChannel OPEN (sender)");
-    sendFile();
-  };
-
-  pc.onicecandidate = e => {
-    if (e.candidate) {
-      socket.send(JSON.stringify({ type: "signal", candidate: e.candidate }));
-    }
-  };
-
-  socket.onmessage = async e => {
-    const data = JSON.parse(e.data);
-
-    if (data.type === "peer-joined") {
-      console.log("👤 Receiver joined, creating offer");
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socket.send(JSON.stringify({
-        type: "signal",
-        sdp: offer
-      }));
-    }
-
-    if (data.sdp) {
-      await pc.setRemoteDescription(data.sdp);
-    }
-
-    if (data.candidate) {
-      await pc.addIceCandidate(data.candidate);
-    }
-  };
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({
-      type: "create-room",
-      roomId
-    }));
-  };
-};
-
-async function sendFile() {
-  dc.send(JSON.stringify({
-    type: "meta",
-    name: file.name,
-    size: file.size,
-    totalChunks: Math.ceil(file.size / CHUNK_SIZE)
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    type: "join-room",
+    roomId,
+    password,
+    username
   }));
+};
 
-  let offset = 0;
-  let index = 0;
+ws.onmessage = async e => {
+  const msg = JSON.parse(e.data);
 
-  while (offset < file.size) {
-    const chunk = file.slice(offset, offset + CHUNK_SIZE);
-    const buffer = await chunk.arrayBuffer();
-
-    dc.send(JSON.stringify({ type: "chunk", index }));
-    dc.send(buffer);
-
-    offset += CHUNK_SIZE;
-    index++;
+  if (msg.type === "room-state") {
+    myUserId = msg.userId;
+    msg.files.forEach(addFileUI);
+    if (msg.isOwner)
+      document.getElementById("killBtn").hidden = false;
   }
 
-  console.log("✅ File sent");
+  if (msg.type === "file-added") addFileUI(msg.file);
+  if (msg.type === "file-removed")
+    document.getElementById(msg.fileId)?.remove();
+
+  if (msg.type === "room-killed") {
+    alert("Room closed");
+    location.href = "index.html";
+  }
+
+  if (msg.type === "signal") handleSignal(msg);
+};
+
+window.upload = () => {
+  const file = document.getElementById("file").files[0];
+  if (!file) return;
+
+  const fileId = crypto.randomUUID();
+  localFiles[fileId] = file;
+
+  ws.send(JSON.stringify({
+    type: "add-file",
+    name: file.name,
+    ownerId: myUserId,
+    ownerName: username
+  }));
+};
+
+function addFileUI(file) {
+  const card = document.createElement("div");
+  card.className = "file-card";
+  card.id = file.id;
+
+  const time = new Date(file.ts).toLocaleTimeString();
+
+  card.innerHTML = `
+    <div class="file-meta">By ${file.ownerName} at ${time}</div>
+    <div class="file-preview"></div>
+    <div class="file-name">${file.name}</div>
+    <button onclick="download(${JSON.stringify(file).replace(/"/g,'&quot;')})">
+      Download
+    </button>
+  `;
+
+  document.getElementById("files").prepend(card);
 }
 
-/* =======================
-   RECEIVER
-======================= */
-window.joinRoom = async () => {
-  const roomId = document.getElementById("room").value;
-  if (!roomId) return alert("Enter Room ID");
 
-  socket = new WebSocket("ws://localhost:8081");
-  pc = new RTCPeerConnection(rtcConfig);
+function download(file) {
+  if (file.ownerId === myUserId) return alert("You own this file");
+  ws.send(JSON.stringify({
+    type: "signal",
+    roomId,
+    action: "request-file",
+    target: file.ownerId,
+    fileId: file.id
+  }));
+}
 
-  let receivedChunks = [];
-  let fileMeta = {};
-  let currentIndex = 0;
+function handleSignal(msg) {
+  if (msg.action === "request-file") {
+    sendFile(msg.target, msg.fileId);
+  }
+}
 
-  pc.ondatachannel = e => {
-    console.log("✅ DataChannel received (receiver)");
-    const channel = e.channel;
+/* Simplified streaming (safe, not turbo) */
+async function sendFile(peerId, fileId) {
+  const file = localFiles[fileId];
+  if (!file) return alert("Sender offline");
 
-    channel.onmessage = msg => {
-      if (typeof msg.data === "string") {
-        const data = JSON.parse(msg.data);
+  const pc = new RTCPeerConnection();
+  const dc = pc.createDataChannel("file");
 
-        if (data.type === "meta") {
-          fileMeta = data;
-          receivedChunks = new Array(data.totalChunks);
-          console.log("📥 Receiving:", fileMeta.name);
-        }
-
-        if (data.type === "chunk") {
-          currentIndex = data.index;
-        }
-      } else {
-        receivedChunks[currentIndex] = msg.data;
-      }
-
-      if (
-        fileMeta.totalChunks &&
-        receivedChunks.filter(Boolean).length === fileMeta.totalChunks
-      ) {
-        const blob = new Blob(receivedChunks);
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = fileMeta.name;
-        a.click();
-
-        console.log("✅ File received");
-      }
-    };
-  };
-
-  pc.onicecandidate = e => {
-    if (e.candidate) {
-      socket.send(JSON.stringify({ type: "signal", candidate: e.candidate }));
+  dc.onopen = async () => {
+    dc.send(JSON.stringify({ name: file.name, size: file.size }));
+    let offset = 0;
+    while (offset < file.size) {
+      const chunk = file.slice(offset, offset + 64 * 1024);
+      dc.send(await chunk.arrayBuffer());
+      offset += 64 * 1024;
+      await new Promise(r => setTimeout(r, 0));
     }
+    pc.close();
   };
+}
 
-  socket.onopen = () => {
-    socket.send(JSON.stringify({
-      type: "join-room",
-      roomId
-    }));
-  };
-
-  socket.onmessage = async e => {
-    const data = JSON.parse(e.data);
-
-    if (data.sdp) {
-      await pc.setRemoteDescription(data.sdp);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      socket.send(JSON.stringify({
-        type: "signal",
-        sdp: answer
-      }));
-    }
-
-    if (data.candidate) {
-      await pc.addIceCandidate(data.candidate);
-    }
-  };
+window.killRoom = () => {
+  ws.send(JSON.stringify({ type: "kill-room" }));
 };

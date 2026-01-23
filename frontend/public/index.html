@@ -1,17 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>P2P File Share</title>
+  <meta charset="UTF-8" />
+  <title>Join Workspace</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <h2>P2P File Share</h2>
+<body class="centered">
 
-  <input type="file" id="file">
-  <button onclick="createRoom()">Send</button>
+<div class="join-card">
+  <h1>Workspace</h1>
+  <p class="muted">Secure peer-to-peer file workspace</p>
 
-  <input id="room" placeholder="Room ID">
-  <button onclick="joinRoom()">Receive</button>
+  <input id="roomId" placeholder="Room ID" />
+  <input id="password" type="password" placeholder="Room Password" />
+  <input id="username" placeholder="Your Name" />
 
-  <script type="module" src="./webrtc.js"></script>
+  <button class="primary" onclick="enter()">Enter Room</button>
+</div>
+
+<script>
+function enter() {
+  sessionStorage.setItem("roomId", roomId.value);
+  sessionStorage.setItem("password", password.value);
+  sessionStorage.setItem("username", username.value);
+  location.href = "workspace.html";
+}
+</script>
+
 </body>
 </html>
