@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>P2P File Share</title>
+</head>
+<body>
+  <h2>P2P File Share</h2>
+
+  <input type="file" id="file">
+  <button onclick="createRoom()">Send</button>
+
+  <input id="room" placeholder="Room ID">
+  <button onclick="joinRoom()">Receive</button>
+
+  <script type="module" src="../src/webrtc.js"></script>
+</body>
+</html>
