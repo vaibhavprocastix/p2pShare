@@ -2,74 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Workspace</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
 <div class="app">
-
-  <!-- LEFT SIDEBAR -->
-  <aside class="sidebar">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
     <h2>Room</h2>
-
-    <div class="upload-box" id="dropZone">
-      <p>Drag and drop<br/>or click here to<br/>add files to<br/>workspace</p>
-      <input type="file" id="file" hidden />
+    
+    <div class="upload-box" id="uploadBox">
+      <div>
+        <div style="font-size: 48px; margin-bottom: 10px;">📁</div>
+        <div>Drag and drop<br/>or click here to<br/>add files to workspace</div>
+      </div>
     </div>
-
-    <button class="primary" onclick="upload()">Upload</button>
+    <input type="file" id="fileInput" hidden multiple />
 
     <div class="room-info">
-      <p><b>room ID:</b> <span id="roomIdLabel"></span></p>
-      <p><b>room pass:</b></p>
-      <p><b>total users:</b> <span id="userCount"></span></p>
-      <p><b>host:</b> <span id="hostName"></span></p>
+      <p><strong>Room ID:</strong> <span id="roomIdDisplay"></span></p>
+      <p><strong>Password:</strong> <span id="passDisplay"></span></p>
+      <p><strong>Users Online:</strong> <span id="userCount">1</span></p>
+      <p><strong>Host:</strong> <span id="hostDisplay"></span></p>
     </div>
 
-    <button id="killBtn" class="danger" onclick="killRoom()" hidden>
-      Kill Room
+    <button class="danger" id="killBtn" onclick="killRoom()" style="display: none;">
+      🗑️ Destroy Room
     </button>
-  </aside>
+
+    <button class="secondary" onclick="leaveRoom()">
+      🚪 Leave Room
+    </button>
+  </div>
 
   <!-- MAIN WORKSPACE -->
-  <main class="workspace">
+  <div class="workspace">
     <h2>Shared Workspace</h2>
-
-    <div id="files" class="file-grid">
-      <!-- File cards injected here -->
+    <div id="emptyState" class="empty-state">
+      No files yet. Upload files to share with everyone in the room.
     </div>
-  </main>
-
+    <div class="file-grid" id="fileGrid"></div>
+  </div>
 </div>
 
 <script src="webrtc.js"></script>
-<script>
-  // drag & drop hookup
-  const dropZone = document.getElementById("dropZone");
-  const fileInput = document.getElementById("file");
-
-  dropZone.onclick = () => fileInput.click();
-
-  dropZone.ondragover = e => {
-    e.preventDefault();
-    dropZone.classList.add("drag");
-  };
-
-  dropZone.ondragleave = () => {
-    dropZone.classList.remove("drag");
-  };
-
-  dropZone.ondrop = e => {
-    e.preventDefault();
-    dropZone.classList.remove("drag");
-    fileInput.files = e.dataTransfer.files;
-  };
-
-  // room info
-  document.getElementById("roomIdLabel").innerText =
-    sessionStorage.getItem("roomId");
-</script>
 
 </body>
 </html>
