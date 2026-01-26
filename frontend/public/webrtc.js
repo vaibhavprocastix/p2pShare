@@ -3,7 +3,9 @@ if (!sessionStorage.roomId || !sessionStorage.password || !sessionStorage.userna
   location.href = "index.html";
 }
 
-const ws = new WebSocket("ws://localhost:8081");
+// Use localhost for WebSocket connection (works in extension context)
+const WS_URL = "ws://localhost:8081";
+const ws = new WebSocket(WS_URL);
 const peers = new Map(); // peerId -> RTCPeerConnection
 const localFiles = new Map(); // fileId -> File object
 const fileMetadata = new Map(); // fileId -> {id, name, ownerId}

@@ -23,7 +23,8 @@
 </div>
 
 <script>
-const ws = new WebSocket("ws://localhost:8081");
+const WS_URL = "ws://localhost:8081";
+const ws = new WebSocket(WS_URL);
 let pendingAction = null;
 
 ws.onopen = () => {
