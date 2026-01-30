@@ -52,6 +52,15 @@ wss.on("connection", ws => {
         return;
       }
 
+      // Check if username already exists in this room
+      const existingUsers = await redis.hGetAll(`${key}:presence`);
+      const usernames = Object.values(existingUsers);
+      
+      if (usernames.includes(username)) {
+        ws.send(JSON.stringify({ type: "error", error: "Username already taken in this room" }));
+        return;
+      }
+
       const userId = crypto.randomUUID();
       clients.set(ws, { roomId, userId, username });
 
@@ -146,6 +155,7 @@ wss.on("connection", ws => {
       if (!meta) return;
 
       // Forward signal to target peer
+      let targetFound = false;
       for (const [targetWs, targetMeta] of clients) {
         if (targetMeta.roomId === meta.roomId && 
             targetMeta.userId === msg.target) {
@@ -153,8 +163,18 @@ wss.on("connection", ws => {
             ...msg,
             from: meta.userId
           }));
+          targetFound = true;
           break;
         }
+      }
+
+      // If target not found and it's a request, send error back
+      if (!targetFound && msg.action === "request") {
+        ws.send(JSON.stringify({
+          type: "signal",
+          action: "error",
+          error: "Can't download file. Sender not online."
+        }));
       }
     }
 

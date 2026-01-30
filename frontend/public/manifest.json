@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "P2P Workspace",
+  "name": "Secure P2P Workspace",
   "version": "1.0.0",
   "description": "Peer-to-peer file sharing workspace with end-to-end encryption",
   "permissions": [
@@ -21,5 +21,8 @@
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }

@@ -3,7 +3,7 @@ document.getElementById('openWorkspace').addEventListener('click', () => {
   const screenWidth = window.screen.availWidth;
   const screenHeight = window.screen.availHeight;
 
-  // Calculate 1/3 of screen size
+  // Calculate 1/3 of screen width
   const width = Math.floor(screenWidth / 3);
   const height = screenHeight;
 
@@ -18,7 +18,8 @@ document.getElementById('openWorkspace').addEventListener('click', () => {
     width: width,
     height: height,
     left: left,
-    top: top
+    top: top,
+    focused: true
   });
 
   // Close the popup

@@ -8,7 +8,7 @@
 </head>
 <body class="centered">
 
-<div class="join-card">
+<div class="join-card glass">
   <h1>🔒 Secure Workspace</h1>
   <p class="muted">Peer-to-peer file sharing workspace</p>
 
@@ -16,87 +16,13 @@
   <input id="password" type="password" placeholder="Room Password" />
   <input id="username" placeholder="Your Name" maxlength="30" />
 
-  <button class="primary" onclick="createRoom()">Create New Room</button>
-  <button class="secondary" onclick="joinRoom()">Join Existing Room</button>
+  <button class="primary" id="createRoomBtn">Create New Room</button>
+  <button class="secondary" id="joinRoomBtn">Join Existing Room</button>
 
   <div id="status" class="status-msg"></div>
 </div>
 
-<script>
-const WS_URL = "ws://localhost:8081";
-const ws = new WebSocket(WS_URL);
-let pendingAction = null;
-
-ws.onopen = () => {
-  status.textContent = "Connected";
-  status.className = "status-msg success";
-};
-
-ws.onerror = () => {
-  status.textContent = "Connection error. Is the server running?";
-  status.className = "status-msg error";
-};
-
-function getData() {
-  const room = roomId.value.trim();
-  const pass = password.value.trim();
-  const user = username.value.trim();
-
-  if (!room || !pass || !user) {
-    status.textContent = "Please fill all fields";
-    status.className = "status-msg error";
-    return null;
-  }
-
-  return { roomId: room, password: pass, username: user };
-}
-
-function createRoom() {
-  const data = getData();
-  if (!data) return;
-
-  pendingAction = "create";
-  ws.send(JSON.stringify({ type: "create-room", ...data }));
-  status.textContent = "Creating room...";
-  status.className = "status-msg";
-}
-
-function joinRoom() {
-  const data = getData();
-  if (!data) return;
-
-  pendingAction = "join";
-  ws.send(JSON.stringify({ type: "join-room", ...data }));
-  status.textContent = "Joining room...";
-  status.className = "status-msg";
-}
-
-ws.onmessage = e => {
-  const msg = JSON.parse(e.data);
-
-  if (msg.type === "error") {
-    status.textContent = msg.error;
-    status.className = "status-msg error";
-    pendingAction = null;
-  }
-
-  if (msg.type === "room-created") {
-    // Auto-join after creation
-    const data = getData();
-    ws.send(JSON.stringify({ type: "join-room", ...data }));
-  }
-
-  if (msg.type === "room-state") {
-    // Save to session and redirect
-    sessionStorage.setItem("roomId", roomId.value);
-    sessionStorage.setItem("password", password.value);
-    sessionStorage.setItem("username", username.value);
-    sessionStorage.setItem("userId", msg.userId);
-    sessionStorage.setItem("isOwner", msg.isOwner);
-    location.href = "workspace.html";
-  }
-};
-</script>
+<script src="index.js"></script>
 
 </body>
 </html>
