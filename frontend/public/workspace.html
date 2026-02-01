@@ -9,39 +9,44 @@
 <body>
 
 <div class="app">
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <h2>Room</h2>
-    
-    <div class="upload-box" id="uploadBox">
-      <div>
-        <div style="font-size: 48px; margin-bottom: 10px;">📁</div>
-        <div>Drag and drop<br/>or click here to<br/>add files to workspace</div>
+  <!-- HEADER SECTION -->
+  <div class="header-section">
+    <!-- UPLOAD AREA -->
+    <div class="upload-area">
+      <div class="upload-box glass" id="uploadBox">
+        <div>
+          <div style="font-size: 40px; margin-bottom: 8px;">📁</div>
+          <div>Drag & Drop<br/>or Click here</div>
+        </div>
+      </div>
+      <input type="file" id="fileInput" hidden multiple />
+    </div>
+
+    <!-- ROOM INFO SIDEBAR -->
+    <div class="room-sidebar">
+      <div class="room-info glass-dark">
+        <p><strong>Room ID:</strong> <span id="roomIdDisplay"></span></p>
+        <p><strong>Password:</strong> <span id="passDisplay"></span></p>
+        <p><strong>Members:</strong> <span id="userCount">1</span></p>
+        <p><strong>Host:</strong> <span id="hostDisplay"></span></p>
+      </div>
+
+      <div class="room-actions">
+        <button class="danger" id="killBtn" style="display: none;">
+          Kill Room
+        </button>
+        <button class="leave-btn secondary" id="leaveBtn">
+          Leave Room
+        </button>
       </div>
     </div>
-    <input type="file" id="fileInput" hidden multiple />
-
-    <div class="room-info">
-      <p><strong>Room ID:</strong> <span id="roomIdDisplay"></span></p>
-      <p><strong>Password:</strong> <span id="passDisplay"></span></p>
-      <p><strong>Users Online:</strong> <span id="userCount">1</span></p>
-      <p><strong>Host:</strong> <span id="hostDisplay"></span></p>
-    </div>
-
-    <button class="danger" id="killBtn" onclick="killRoom()" style="display: none;">
-      🗑️ Destroy Room
-    </button>
-
-    <button class="secondary" onclick="leaveRoom()">
-      🚪 Leave Room
-    </button>
   </div>
 
   <!-- MAIN WORKSPACE -->
   <div class="workspace">
-    <h2>Shared Workspace</h2>
+    <h2>P2P Workspace</h2>
     <div id="emptyState" class="empty-state">
-      No files yet. Upload files to share with everyone in the room.
+      No files yet. Upload files to share.
     </div>
     <div class="file-grid" id="fileGrid"></div>
   </div>

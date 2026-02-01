@@ -3,7 +3,12 @@ if (!sessionStorage.roomId || !sessionStorage.password || !sessionStorage.userna
   location.href = "index.html";
 }
 
-const ws = new WebSocket("ws://localhost:8081");
+// Use localhost for WebSocket connection (works in extension context)
+// For production, replace with your deployed WebSocket URL
+const WS_URL = process.env.NODE_ENV === 'production' 
+  ? "wss://your-app-name.onrender.com" 
+  : "ws://localhost:8081";
+const ws = new WebSocket(WS_URL);
 const peers = new Map(); // peerId -> RTCPeerConnection
 const localFiles = new Map(); // fileId -> File object
 const fileMetadata = new Map(); // fileId -> {id, name, ownerId}
@@ -17,11 +22,16 @@ const fileInput = document.getElementById("fileInput");
 const fileGrid = document.getElementById("fileGrid");
 const emptyState = document.getElementById("emptyState");
 const killBtn = document.getElementById("killBtn");
+const leaveBtn = document.getElementById("leaveBtn");
 
 // Display room info
 roomIdDisplay.textContent = sessionStorage.roomId;
 passDisplay.textContent = "••••••••";
 hostDisplay.textContent = "Loading...";
+
+// Event listeners for buttons
+killBtn.addEventListener('click', killRoom);
+leaveBtn.addEventListener('click', leaveRoom);
 
 // WebSocket connection
 ws.onopen = () => {
@@ -154,20 +164,35 @@ function addFileToUI(file) {
   const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const isMyFile = file.ownerId === myId;
-  const iconColor = isMyFile ? "rgba(100, 200, 255, 0.85)" : "rgba(255, 255, 255, 0.85)";
 
   card.innerHTML = `
     <div class="file-meta">${file.ownerName} · ${timeStr}</div>
-    <div class="file-preview" style="border-color: ${iconColor};">
+    <div class="file-preview glass">
       <div class="file-icon">${getFileIcon(file.type)}</div>
     </div>
     <div class="file-name">${file.name}</div>
     <div class="file-size">${formatSize(file.size)}</div>
-    ${isMyFile ? 
-      `<button class="danger-small" onclick="removeFile('${file.id}')">Remove</button>` :
-      `<button class="primary-small" onclick="window.downloadFile('${file.id}', '${file.ownerId}')">Download</button>`
-    }
+    <div class="file-actions">
+      ${isMyFile ? 
+        `<button class="btn-small delete-btn" data-action="delete" data-file-id="${file.id}">Delete</button>` :
+        `<button class="btn-small download-btn" data-action="download" data-file-id="${file.id}" data-owner-id="${file.ownerId}">Download</button>`
+      }
+    </div>
   `;
+
+  // Add event listener to the button
+  const button = card.querySelector('button');
+  button.addEventListener('click', function() {
+    const action = this.dataset.action;
+    const fileId = this.dataset.fileId;
+    const ownerId = this.dataset.ownerId;
+    
+    if (action === 'delete') {
+      removeFile(fileId);
+    } else if (action === 'download') {
+      downloadFile(fileId, ownerId);
+    }
+  });
 
   // Insert at the beginning (newest first)
   fileGrid.insertBefore(card, fileGrid.firstChild);
@@ -225,6 +250,13 @@ function handleSignal(msg) {
     
     if (!file) {
       console.error("File not found:", fileId);
+      // Send error back to requester
+      ws.send(JSON.stringify({
+        type: "signal",
+        action: "error",
+        target: msg.from,
+        error: "File not available"
+      }));
       return;
     }
 
@@ -283,6 +315,11 @@ function handleSignal(msg) {
     });
   }
 
+  if (msg.action === "error") {
+    showNotification(msg.error || "Can't download file. Sender not online.", "error");
+    return;
+  }
+
   if (msg.sdp) {
     let pc = peers.get(msg.from);
 
@@ -316,6 +353,7 @@ function handleSignal(msg) {
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                    showNotification("File downloaded successfully!", "success");
                   }
                 }
               } catch (e) {
@@ -329,6 +367,7 @@ function handleSignal(msg) {
 
           dc.onerror = err => {
             console.error("Data channel error:", err);
+            showNotification("Download failed", "error");
           };
         };
 
@@ -350,6 +389,28 @@ function handleSignal(msg) {
       pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
     }
   }
+}
+
+// Notification system
+function showNotification(message, type = "info") {
+  const notification = document.createElement("div");
+  notification.className = `status-msg ${type}`;
+  notification.textContent = message;
+  notification.style.position = "fixed";
+  notification.style.top = "20px";
+  notification.style.right = "20px";
+  notification.style.zIndex = "10000";
+  notification.style.minWidth = "250px";
+  notification.style.animation = "slideIn 0.3s ease-out";
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.opacity = "0";
+    notification.style.transform = "translateX(400px)";
+    notification.style.transition = "all 0.3s ease-out";
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
 }
 
 function createPeerConnection(peerId) {

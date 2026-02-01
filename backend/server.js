@@ -1,11 +1,32 @@
 import { WebSocketServer } from "ws";
 import crypto from "crypto";
-import { connectRedis, redis } from "./redis.js";
+import http from "http";
 
-await connectRedis();
+// Create HTTP server for health checks
+const httpServer = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      rooms: rooms.size,
+      clients: clients.size,
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
 
-const wss = new WebSocketServer({ port: 8081 });
+httpServer.listen(8081, () => {
+  console.log("✅ HTTP server running on :8081");
+});
+
+const wss = new WebSocketServer({ server: httpServer });
 const clients = new Map(); // ws -> { roomId, userId, username }
+
+// In-memory storage (replaces Redis)
+const rooms = new Map(); // roomId -> { password, owner, users: Set, files: [], presence: Map }
 
 wss.on("connection", ws => {
 
@@ -17,21 +38,20 @@ wss.on("connection", ws => {
     /* ===== CREATE ROOM ===== */
     if (msg.type === "create-room") {
       const { roomId, password, username } = msg;
-      const key = `room:${roomId}`;
 
-      if (await redis.exists(key)) {
+      if (rooms.has(roomId)) {
         ws.send(JSON.stringify({ type: "error", error: "Room already exists" }));
         return;
       }
 
-      // Ensure clean slate - delete any orphaned data
-      await redis.del(key);
-      await redis.del(`${key}:users`);
-      await redis.del(`${key}:files`);
-      await redis.del(`${key}:presence`);
-
-      // Create fresh room
-      await redis.hSet(key, { password, owner: username });
+      // Create new room
+      rooms.set(roomId, {
+        password,
+        owner: username,
+        users: new Set(),
+        files: [],
+        presence: new Map()
+      });
 
       ws.send(JSON.stringify({ type: "room-created" }));
       return;
@@ -40,48 +60,44 @@ wss.on("connection", ws => {
     /* ===== JOIN ROOM ===== */
     if (msg.type === "join-room") {
       const { roomId, password, username } = msg;
-      const key = `room:${roomId}`;
 
-      if (!(await redis.exists(key))) {
+      if (!rooms.has(roomId)) {
         ws.send(JSON.stringify({ type: "error", error: "Room does not exist" }));
         return;
       }
 
-      if ((await redis.hGet(key, "password")) !== password) {
+      const room = rooms.get(roomId);
+
+      if (room.password !== password) {
         ws.send(JSON.stringify({ type: "error", error: "Wrong password" }));
+        return;
+      }
+
+      // Check if username already exists in this room
+      const existingUsernames = Array.from(room.presence.values());
+      if (existingUsernames.includes(username)) {
+        ws.send(JSON.stringify({ type: "error", error: "Username already taken in this room" }));
         return;
       }
 
       const userId = crypto.randomUUID();
       clients.set(ws, { roomId, userId, username });
 
-      await redis.sAdd(`${key}:users`, userId);
-      await redis.hSet(`${key}:presence`, userId, username);
+      room.users.add(userId);
+      room.presence.set(userId, username);
 
-      // Get files list
-      const filesRaw = await redis.lRange(`${key}:files`, 0, -1);
-      const files = filesRaw.map(f => {
-        try {
-          return JSON.parse(f);
-        } catch (e) {
-          console.error("Error parsing file:", e);
-          return null;
-        }
-      }).filter(Boolean);
+      const userCount = room.users.size;
 
-      const ownerName = await redis.hGet(key, "owner");
-      const userCount = await redis.sCard(`${key}:users`);
-
-      console.log(`User ${username} joined room ${roomId}, ${files.length} files in room`);
+      console.log(`User ${username} joined room ${roomId}, ${room.files.length} files in room`);
 
       ws.send(JSON.stringify({
         type: "room-state",
         userId,
-        files,
-        isOwner: username === ownerName,
+        files: room.files,
+        isOwner: username === room.owner,
         roomId,
         userCount,
-        ownerName
+        ownerName: room.owner
       }));
 
       // Notify others
@@ -99,8 +115,8 @@ wss.on("connection", ws => {
       const meta = clients.get(ws);
       if (!meta) return;
 
-      const key = `room:${meta.roomId}`;
-      if (!(await redis.exists(key))) return;
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
 
       const file = {
         id: msg.fileId || crypto.randomUUID(),
@@ -112,7 +128,7 @@ wss.on("connection", ws => {
         timestamp: Date.now()
       };
 
-      await redis.lPush(`${key}:files`, JSON.stringify(file));
+      room.files.unshift(file); // Add to beginning (newest first)
       broadcast(meta.roomId, { type: "file-added", file });
       return;
     }
@@ -122,16 +138,15 @@ wss.on("connection", ws => {
       const meta = clients.get(ws);
       if (!meta) return;
 
-      const key = `room:${meta.roomId}`;
-      const files = await redis.lRange(`${key}:files`, 0, -1);
-      
-      const fileToRemove = files.find(f => {
-        const parsed = JSON.parse(f);
-        return parsed.id === msg.fileId && parsed.ownerId === meta.userId;
-      });
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
 
-      if (fileToRemove) {
-        await redis.lRem(`${key}:files`, 1, fileToRemove);
+      const fileIndex = room.files.findIndex(f => 
+        f.id === msg.fileId && f.ownerId === meta.userId
+      );
+
+      if (fileIndex !== -1) {
+        room.files.splice(fileIndex, 1);
         broadcast(meta.roomId, { 
           type: "file-removed", 
           fileId: msg.fileId 
@@ -146,6 +161,7 @@ wss.on("connection", ws => {
       if (!meta) return;
 
       // Forward signal to target peer
+      let targetFound = false;
       for (const [targetWs, targetMeta] of clients) {
         if (targetMeta.roomId === meta.roomId && 
             targetMeta.userId === msg.target) {
@@ -153,8 +169,18 @@ wss.on("connection", ws => {
             ...msg,
             from: meta.userId
           }));
+          targetFound = true;
           break;
         }
+      }
+
+      // If target not found and it's a request, send error back
+      if (!targetFound && msg.action === "request") {
+        ws.send(JSON.stringify({
+          type: "signal",
+          action: "error",
+          error: "Can't download file. Sender not online."
+        }));
       }
     }
 
@@ -163,41 +189,45 @@ wss.on("connection", ws => {
       const meta = clients.get(ws);
       if (!meta) return;
 
-      const key = `room:${meta.roomId}`;
-      const ownerName = await redis.hGet(key, "owner");
-      
-      if (meta.username !== ownerName) {
+      const room = rooms.get(meta.roomId);
+      if (!room) return;
+
+      if (meta.username !== room.owner) {
         ws.send(JSON.stringify({ type: "error", error: "Only owner can kill room" }));
         return;
       }
 
-      // Delete all room data from Redis
-      await redis.del(key);
-      await redis.del(`${key}:users`);
-      await redis.del(`${key}:files`);
-      await redis.del(`${key}:presence`);
-      
+      // Delete room
+      rooms.delete(meta.roomId);
       destroyRoom(meta.roomId);
     }
   });
 
-  ws.on("close", async () => {
+  ws.on("close", () => {
     const meta = clients.get(ws);
     if (!meta) return;
 
-    const key = `room:${meta.roomId}`;
-    await redis.sRem(`${key}:users`, meta.userId);
-    await redis.hDel(`${key}:presence`, meta.userId);
+    const room = rooms.get(meta.roomId);
+    if (room) {
+      room.users.delete(meta.userId);
+      room.presence.delete(meta.userId);
 
-    const userCount = await redis.sCard(`${key}:users`);
+      const userCount = room.users.size;
 
-    // Notify others
-    broadcast(meta.roomId, { 
-      type: "user-left", 
-      username: meta.username,
-      userId: meta.userId,
-      userCount 
-    });
+      // Notify others
+      broadcast(meta.roomId, { 
+        type: "user-left", 
+        username: meta.username,
+        userId: meta.userId,
+        userCount 
+      });
+
+      // Delete room if empty
+      if (room.users.size === 0) {
+        rooms.delete(meta.roomId);
+        console.log(`Room ${meta.roomId} deleted (empty)`);
+      }
+    }
 
     clients.delete(ws);
   });
