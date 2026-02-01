@@ -1,4 +1,8 @@
-const WS_URL = "ws://localhost:8081";
+// WebSocket URL - update this with your deployed URL for production
+const WS_URL = typeof chrome !== 'undefined' && chrome.runtime 
+  ? "wss://your-app-name.onrender.com"  // Production URL
+  : "ws://localhost:8081";                // Development URL
+
 const ws = new WebSocket(WS_URL);
 let pendingAction = null;
 

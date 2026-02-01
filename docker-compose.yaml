@@ -5,19 +5,18 @@ services:
     build: ./backend
     ports:
       - "8081:8081"
+    restart: unless-stopped
     environment:
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - redis
+      - NODE_ENV=production
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    # volumes:
-    #   - redis_data:/data
-    # restart: unless-stopped
-
-# volumes:
-#   redis_data:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M

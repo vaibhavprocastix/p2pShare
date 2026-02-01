@@ -4,7 +4,10 @@ if (!sessionStorage.roomId || !sessionStorage.password || !sessionStorage.userna
 }
 
 // Use localhost for WebSocket connection (works in extension context)
-const WS_URL = "ws://localhost:8081";
+// For production, replace with your deployed WebSocket URL
+const WS_URL = process.env.NODE_ENV === 'production' 
+  ? "wss://your-app-name.onrender.com" 
+  : "ws://localhost:8081";
 const ws = new WebSocket(WS_URL);
 const peers = new Map(); // peerId -> RTCPeerConnection
 const localFiles = new Map(); // fileId -> File object
