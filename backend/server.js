@@ -1,59 +1,70 @@
 import { WebSocketServer } from "ws";
-import crypto from "crypto";
 import http from "http";
+import crypto from "crypto";
+import { redis, connectRedis } from "./redis.js";
 
-// Create HTTP server for health checks
-const httpServer = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'healthy', 
-      rooms: rooms.size,
-      clients: clients.size,
-      uptime: process.uptime()
-    }));
-  } else {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
+await connectRedis();
+
+/* ---------- HTTP SERVER ---------- */
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("OK");
 });
+server.listen(8081);
 
-httpServer.listen(8081, () => {
-  console.log("✅ HTTP server running on :8081");
-});
+/* ---------- WEBSOCKET ---------- */
+const wss = new WebSocketServer({ server });
+const sockets = new Map(); // ws -> { userId, roomId, username }
 
-const wss = new WebSocketServer({ server: httpServer });
-const clients = new Map(); // ws -> { roomId, userId, username }
+/* ---------- REDIS KEYS ---------- */
+/*
+room:{roomId} -> {
+  ownerId,
+  ownerName,
+  password,
+  alive: "1"
+}
 
-// In-memory storage (replaces Redis)
-const rooms = new Map(); // roomId -> { password, owner, users: Set, files: [], presence: Map }
+room:{roomId}:users -> hash(userId -> username)
+room:{roomId}:files -> list(JSON)
+*/
 
 wss.on("connection", ws => {
 
   ws.on("message", async raw => {
     let msg;
-    try { msg = JSON.parse(raw); }
-    catch { return; }
+    try { msg = JSON.parse(raw); } catch { return; }
 
     /* ===== CREATE ROOM ===== */
     if (msg.type === "create-room") {
       const { roomId, password, username } = msg;
 
-      if (rooms.has(roomId)) {
-        ws.send(JSON.stringify({ type: "error", error: "Room already exists" }));
-        return;
+      if (await redis.exists(`room:${roomId}`)) {
+        return ws.send(JSON.stringify({ type: "error", error: "Room already exists" }));
       }
 
-      // Create new room
-      rooms.set(roomId, {
+      const ownerId = crypto.randomUUID();
+
+      await redis.hSet(`room:${roomId}`, {
+        ownerId,
+        ownerName: username,
         password,
-        owner: username,
-        users: new Set(),
-        files: [],
-        presence: new Map()
+        alive: "1"
       });
 
-      ws.send(JSON.stringify({ type: "room-created" }));
+      await redis.hSet(`room:${roomId}:users`, ownerId, username);
+
+      sockets.set(ws, { userId: ownerId, roomId, username });
+
+      ws.send(JSON.stringify({
+        type: "room-state",
+        userId: ownerId,
+        isOwner: true,
+        ownerName: username,
+        files: [],
+        userCount: 1
+      }));
+
       return;
     }
 
@@ -61,50 +72,36 @@ wss.on("connection", ws => {
     if (msg.type === "join-room") {
       const { roomId, password, username } = msg;
 
-      if (!rooms.has(roomId)) {
-        ws.send(JSON.stringify({ type: "error", error: "Room does not exist" }));
-        return;
+      const room = await redis.hGetAll(`room:${roomId}`);
+      if (!room.alive) {
+        return ws.send(JSON.stringify({ type: "error", error: "Room does not exist" }));
       }
-
-      const room = rooms.get(roomId);
-
       if (room.password !== password) {
-        ws.send(JSON.stringify({ type: "error", error: "Wrong password" }));
-        return;
-      }
-
-      // Check if username already exists in this room
-      const existingUsernames = Array.from(room.presence.values());
-      if (existingUsernames.includes(username)) {
-        ws.send(JSON.stringify({ type: "error", error: "Username already taken in this room" }));
-        return;
+        return ws.send(JSON.stringify({ type: "error", error: "Wrong password" }));
       }
 
       const userId = crypto.randomUUID();
-      clients.set(ws, { roomId, userId, username });
+      await redis.hSet(`room:${roomId}:users`, userId, username);
 
-      room.users.add(userId);
-      room.presence.set(userId, username);
+      sockets.set(ws, { userId, roomId, username });
 
-      const userCount = room.users.size;
+      const files = (await redis.lRange(`room:${roomId}:files`, 0, -1))
+        .map(JSON.parse);
 
-      console.log(`User ${username} joined room ${roomId}, ${room.files.length} files in room`);
+      const userCount = await redis.hLen(`room:${roomId}:users`);
 
       ws.send(JSON.stringify({
         type: "room-state",
         userId,
-        files: room.files,
-        isOwner: username === room.owner,
-        roomId,
-        userCount,
-        ownerName: room.owner
+        isOwner: false,
+        ownerName: room.ownerName,
+        files,
+        userCount
       }));
 
-      // Notify others
-      broadcast(roomId, { 
-        type: "user-joined", 
-        username,
-        userCount 
+      broadcast(roomId, {
+        type: "user-joined",
+        userCount
       }, ws);
 
       return;
@@ -112,14 +109,11 @@ wss.on("connection", ws => {
 
     /* ===== ADD FILE ===== */
     if (msg.type === "add-file") {
-      const meta = clients.get(ws);
+      const meta = sockets.get(ws);
       if (!meta) return;
 
-      const room = rooms.get(meta.roomId);
-      if (!room) return;
-
       const file = {
-        id: msg.fileId || crypto.randomUUID(),
+        id: msg.fileId,
         name: msg.name,
         size: msg.size,
         type: msg.fileType,
@@ -128,113 +122,88 @@ wss.on("connection", ws => {
         timestamp: Date.now()
       };
 
-      room.files.unshift(file); // Add to beginning (newest first)
+      await redis.lPush(`room:${meta.roomId}:files`, JSON.stringify(file));
+
       broadcast(meta.roomId, { type: "file-added", file });
       return;
     }
 
     /* ===== REMOVE FILE ===== */
     if (msg.type === "remove-file") {
-      const meta = clients.get(ws);
+      const meta = sockets.get(ws);
       if (!meta) return;
 
-      const room = rooms.get(meta.roomId);
-      if (!room) return;
+      const files = await redis.lRange(`room:${meta.roomId}:files`, 0, -1);
+      await redis.del(`room:${meta.roomId}:files`);
 
-      const fileIndex = room.files.findIndex(f => 
-        f.id === msg.fileId && f.ownerId === meta.userId
-      );
-
-      if (fileIndex !== -1) {
-        room.files.splice(fileIndex, 1);
-        broadcast(meta.roomId, { 
-          type: "file-removed", 
-          fileId: msg.fileId 
-        });
-      }
-      return;
-    }
-
-    /* ===== SIGNAL (WebRTC) ===== */
-    if (msg.type === "signal") {
-      const meta = clients.get(ws);
-      if (!meta) return;
-
-      // Forward signal to target peer
-      let targetFound = false;
-      for (const [targetWs, targetMeta] of clients) {
-        if (targetMeta.roomId === meta.roomId && 
-            targetMeta.userId === msg.target) {
-          targetWs.send(JSON.stringify({
-            ...msg,
-            from: meta.userId
-          }));
-          targetFound = true;
-          break;
+      for (const f of files) {
+        const parsed = JSON.parse(f);
+        if (!(parsed.id === msg.fileId && parsed.ownerId === meta.userId)) {
+          await redis.rPush(`room:${meta.roomId}:files`, f);
         }
       }
 
-      // If target not found and it's a request, send error back
-      if (!targetFound && msg.action === "request") {
+      broadcast(meta.roomId, { type: "file-removed", fileId: msg.fileId });
+      return;
+    }
+
+    /* ===== SIGNAL ===== */
+    if (msg.type === "signal") {
+      const meta = sockets.get(ws);
+      if (!meta) return;
+
+      for (const [targetWs, targetMeta] of sockets) {
+        if (targetMeta.roomId === meta.roomId &&
+            targetMeta.userId === msg.target) {
+          targetWs.send(JSON.stringify({ ...msg, from: meta.userId }));
+          return;
+        }
+      }
+
+      if (msg.action === "request") {
         ws.send(JSON.stringify({
           type: "signal",
           action: "error",
-          error: "Can't download file. Sender not online."
+          error: "Peer not online"
         }));
       }
     }
 
     /* ===== KILL ROOM ===== */
     if (msg.type === "kill-room") {
-      const meta = clients.get(ws);
+      const meta = sockets.get(ws);
       if (!meta) return;
 
-      const room = rooms.get(meta.roomId);
-      if (!room) return;
-
-      if (meta.username !== room.owner) {
-        ws.send(JSON.stringify({ type: "error", error: "Only owner can kill room" }));
-        return;
+      const room = await redis.hGetAll(`room:${meta.roomId}`);
+      if (room.ownerId !== meta.userId) {
+        return ws.send(JSON.stringify({ type: "error", error: "Only owner can kill room" }));
       }
 
-      // Delete room
-      rooms.delete(meta.roomId);
+      await redis.del(
+        `room:${meta.roomId}`,
+        `room:${meta.roomId}:users`,
+        `room:${meta.roomId}:files`
+      );
+
       destroyRoom(meta.roomId);
     }
   });
 
-  ws.on("close", () => {
-    const meta = clients.get(ws);
+  ws.on("close", async () => {
+    const meta = sockets.get(ws);
     if (!meta) return;
 
-    const room = rooms.get(meta.roomId);
-    if (room) {
-      room.users.delete(meta.userId);
-      room.presence.delete(meta.userId);
+    await redis.hDel(`room:${meta.roomId}:users`, meta.userId);
+    sockets.delete(ws);
 
-      const userCount = room.users.size;
-
-      // Notify others
-      broadcast(meta.roomId, { 
-        type: "user-left", 
-        username: meta.username,
-        userId: meta.userId,
-        userCount 
-      });
-
-      // Delete room if empty
-      if (room.users.size === 0) {
-        rooms.delete(meta.roomId);
-        console.log(`Room ${meta.roomId} deleted (empty)`);
-      }
-    }
-
-    clients.delete(ws);
+    const count = await redis.hLen(`room:${meta.roomId}:users`);
+    broadcast(meta.roomId, { type: "user-left", userCount: count });
   });
 });
 
+/* ---------- HELPERS ---------- */
 function broadcast(roomId, msg, except) {
-  for (const [ws, meta] of clients) {
+  for (const [ws, meta] of sockets) {
     if (meta.roomId === roomId && ws !== except) {
       ws.send(JSON.stringify(msg));
     }
@@ -242,13 +211,10 @@ function broadcast(roomId, msg, except) {
 }
 
 function destroyRoom(roomId) {
-  for (const [ws, meta] of clients) {
+  for (const [ws, meta] of sockets) {
     if (meta.roomId === roomId) {
       ws.send(JSON.stringify({ type: "room-killed" }));
       ws.close();
-      clients.delete(ws);
     }
   }
 }
-
-console.log("✅ Signaling server running on :8081");
