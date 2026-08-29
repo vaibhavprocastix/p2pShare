@@ -1,0 +1,86 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# p2pShare — local / self-hosted multi-container stack
+#   redis    -> ephemeral signaling state (room presence, files metadata, TTL 3600s)
+#   backend  -> Node.js WebSocket signaling server (Express + ws + ioredis)
+#   frontend -> Nginx serving the built React app, proxying /ws to the backend
+#
+# Run:  docker compose up --build
+# Then: http://localhost:3000
+#
+# All backend tunables live in backend/config.js (env-var driven) — change a
+# value there or in the `environment:` block below and it applies everywhere.
+# ---------------------------------------------------------------------------
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: p2pshare-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - p2pshare-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: p2pshare-backend
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      REDIS_URL: "redis://redis:6379"
+      CORS_ORIGIN: "*"
+      ROOM_TTL_SECONDS: "3600"
+      ROOM_CAPACITY: "5"
+      HEARTBEAT_INTERVAL_MS: "30000"
+      # TURN relay — required for reliable connectivity across restrictive/symmetric
+      # NAT (mobile hotspots, some carrier networks). Empty by default (STUN-only,
+      # same as before). Fill these in to fix "connection failed" between such peers
+      # — see backend/.env.example and README_DEPLOYMENT.md for setup options
+      # (including a free public TURN server for quick testing).
+      STUN_URLS: "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+      TURN_URLS: ""
+      TURN_SECRET: ""
+      TURN_CREDENTIAL_TTL_SECONDS: "3600"
+      TURN_STATIC_USERNAME: ""
+      TURN_STATIC_CREDENTIAL: ""
+    ports:
+      - "8082:8080" # direct access, e.g. http://localhost:8082/health — the browser client uses the /ws proxy below instead
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - p2pshare-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: p2pshare-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - p2pshare-net
+
+volumes:
+  redis-data:
+
+networks:
+  p2pshare-net:
+    driver: bridge
