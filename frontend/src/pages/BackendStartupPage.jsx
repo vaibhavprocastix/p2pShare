@@ -3,9 +3,9 @@ import { fetchHealth } from '../lib/api.js';
 import '../styles/startup.css';
 
 const CHECK_INTERVAL_MS = 5000;
-const REQUEST_TIMEOUT_MS = 75000;
+const REQUEST_TIMEOUT_MS = 10000;
 
-export default function BackendStartupPage() {
+export default function BackendStartupPage({ onReady }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -26,11 +26,11 @@ export default function BackendStartupPage() {
         });
 
         if (!cancelled && response?.status === 'ok') {
-          window.location.reload();
+          onReady();
           return;
         }
       } catch {
-        // Backend is probably waking up or temporarily unavailable.
+        // Backend is still starting or temporarily unavailable.
       } finally {
         clearTimeout(timeout);
       }

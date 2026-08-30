@@ -66,8 +66,8 @@ function BackendStartupGate() {
   }, []);
 
   if (status === 'starting') {
-    return <BackendStartupPage />;
-  }
+  return <BackendStartupPage onReady={() => setStatus('ready')} />;
+}
 
   if (status === 'ready') {
     return (
