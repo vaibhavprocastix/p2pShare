@@ -61,7 +61,7 @@ export default function Dropzone() {
         <line x1="12" y1="3" x2="12" y2="15" />
       </svg>
       <p className="dropzone__title">Drop files to share</p>
-      <p className="dropzone__sub">or click to browse — everyone in the room can download them</p>
+      <p className="dropzone__sub">or click to browse</p>
     </div>
   );
 }

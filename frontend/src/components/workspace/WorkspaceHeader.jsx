@@ -23,7 +23,9 @@ export default function WorkspaceHeader() {
             <circle cx="8" cy="30" r="4" fill="var(--accent)" />
             <path d="M20 10 L32 30 L8 30 Z" stroke="var(--accent)" strokeWidth="1.6" fill="none" opacity="0.7" />
           </svg>
-          <em>p2pShare</em>
+          <span className="brand__name">
+            p2p<em>Share</em>
+          </span>
         </span>
         <span className="divider" aria-hidden="true" />
         <span className="room-code-badge">{room.displayCode}</span>

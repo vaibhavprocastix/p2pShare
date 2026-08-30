@@ -7,7 +7,7 @@ export default function FileList() {
   if (files.length === 0) {
     return (
       <div className="file-list">
-        <p className="file-list__empty">No files shared yet. Drop a file above — everyone in the room will see it instantly.</p>
+        <p className="file-list__empty">No files shared yet. Drop a file above & everyone in the room will see it instantly.</p>
       </div>
     );
   }

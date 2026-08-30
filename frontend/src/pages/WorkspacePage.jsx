@@ -13,7 +13,7 @@ export default function WorkspacePage() {
   return (
     <main className="screen screen--workspace">
       <WorkspaceHeader />
-      <MeshVisualization />
+      {/* <MeshVisualization /> */}
 
       <section className="ws-body">
         <PeerList />
