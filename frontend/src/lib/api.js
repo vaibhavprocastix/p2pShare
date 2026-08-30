@@ -39,8 +39,11 @@ export function fetchRoomStatus(code) {
 }
 
 /** GET /api/v1/health */
-export function fetchHealth() {
-  return request('/health');
+// export function fetchHealth() {
+//   return request('/health');
+// }
+export function fetchHealth(options = {}) {
+  return request('/health', options);
 }
 
 export default { fetchIceServers, fetchRoomStatus, fetchHealth };
