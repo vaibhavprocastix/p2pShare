@@ -19,11 +19,11 @@ export default function JoinRoomForm({ prefillCode }) {
   return (
     <form className="panel-form" onSubmit={handleSubmit} noValidate>
       <label className="field">
-        <span className="field__label">Your display name</span>
+        <span className="field__label">Enter your display name</span>
         <input
           type="text"
           maxLength={CONFIG.MAX_NAME_LENGTH}
-          placeholder="e.g. Rahul"
+          placeholder=""
           autoComplete="off"
           required
           value={name}
@@ -39,7 +39,7 @@ export default function JoinRoomForm({ prefillCode }) {
         <input
           type="text"
           maxLength={CONFIG.ROOM_CODE_PREFIX.length + CONFIG.ROOM_CODE_LENGTH}
-          placeholder={`${CONFIG.ROOM_CODE_PREFIX}7X9AK2`}
+          placeholder={`${CONFIG.ROOM_CODE_PREFIX}______`}
           autoComplete="off"
           required
           value={code}
@@ -54,12 +54,12 @@ export default function JoinRoomForm({ prefillCode }) {
       <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
         {busy ? 'Joining…' : (
           <>
-            Join room <span className="btn__arrow">→</span>
+            Join room <span className="btn__arrow"></span>
           </>
         )}
       </button>
       <p className="field__hint">
-        Room codes look like <code>{CONFIG.ROOM_CODE_PREFIX}7X9AK2</code>.
+        Room codes starts with "<code>P2P</code>".
       </p>
     </form>
   );

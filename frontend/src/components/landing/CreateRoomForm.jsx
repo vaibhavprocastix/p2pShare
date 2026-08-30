@@ -14,11 +14,11 @@ export default function CreateRoomForm() {
   return (
     <form className="panel-form" onSubmit={handleSubmit} noValidate>
       <label className="field">
-        <span className="field__label">Your display name</span>
+        <span className="field__label">Enter your display name</span>
         <input
           type="text"
           maxLength={CONFIG.MAX_NAME_LENGTH}
-          placeholder="e.g. Asha"
+          placeholder=""
           autoComplete="off"
           required
           value={name}
@@ -30,9 +30,9 @@ export default function CreateRoomForm() {
       </label>
 
       <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
-        {busy ? 'Creating…' : (
+        {busy ? 'Creating…' :(
           <>
-            Create room <span className="btn__arrow">→</span>
+            Create room <span className="btn__arrow"></span>
           </>
         )}
       </button>

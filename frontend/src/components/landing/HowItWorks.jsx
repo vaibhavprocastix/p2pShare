@@ -1,15 +1,15 @@
 const STEPS = [
   {
     n: '01',
-    text: 'Host creates a room. The signaling server hands back a short code and opens a WebSocket presence channel.',
+    text: 'Host creates a room. The signaling server hands back a short code.',
   },
   {
     n: '02',
-    text: 'Peers join with the code. Each browser exchanges SDP offers/answers and ICE candidates through that same channel — never file data.',
+    text: 'Peers join with the code. Each browser exchanges peer browser information.',
   },
   {
     n: '03',
-    text: 'Every peer opens a direct RTCDataChannel to every other peer, forming a full mesh of up to 5 nodes.',
+    text: 'Every peer opens a direct channel to every other peer, forming a full mesh of up to 5 nodes.',
   },
   {
     n: '04',
@@ -20,7 +20,7 @@ const STEPS = [
 export default function HowItWorks() {
   return (
     <section className="how-it-works">
-      <h2 className="section-title">How the mesh forms</h2>
+      <h2 className="section-title">How transfer works</h2>
       <ol className="steps">
         {STEPS.map((s) => (
           <li key={s.n}>

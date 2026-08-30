@@ -47,25 +47,24 @@ export default function LandingPage() {
 
       <section className="hero">
         <div className="hero__copy">
-          <p className="eyebrow">Zero uploads · Zero storage · Full mesh WebRTC</p>
-          <h1 className="hero__title">Your files never touch a server.</h1>
+          <p className="eyebrow">No uploads to server · Zero storage</p>
+          <h1 className="hero__title">Your files never touch the server.</h1>
           <p className="hero__lede">
             p2pShare opens a direct, encrypted data channel between your browser and up to four others.
-            Share a file once and everyone in the room sees it instantly with a Download button — the
-            bytes only move, peer-to-peer, the moment someone actually clicks it.
+            Share a file once and everyone in the room sees it instantly with a Download button.
           </p>
           <ul className="hero__facts">
             <li>
               <span className="fact__num">{CONFIG.MAX_ROOM_CAPACITY}</span>
-              <span className="fact__label">peers per room, full mesh</span>
+              <span className="fact__label">peers per room with full mesh</span>
             </li>
-            <li>
+            {/* <li>
               <span className="fact__num">64KB</span>
               <span className="fact__label">chunked transfer, backpressure-safe</span>
-            </li>
+            </li> */}
             <li>
               <span className="fact__num">0</span>
-              <span className="fact__label">files ever stored server-side</span>
+              <span className="fact__label">files ever stored on the server</span>
             </li>
           </ul>
         </div>
@@ -105,7 +104,7 @@ export default function LandingPage() {
       <HowItWorks />
 
       <footer className="site-footer">
-        <span>p2pShare — signaling only, transfer is yours.</span>
+        <span><b>p2pShare</b> - signaling only, transfer is yours.</span>
       </footer>
     </main>
   );
