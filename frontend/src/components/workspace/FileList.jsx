@@ -14,7 +14,7 @@ export default function FileList() {
 
   return (
     <div className="file-list">
-      {files.map((file) => (
+      {[...files].reverse().map((file) => (
         <FileCard key={file.fileId} file={file} />
       ))}
     </div>
