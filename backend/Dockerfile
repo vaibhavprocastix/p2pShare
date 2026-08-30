@@ -1,26 +1,26 @@
-FROM node:20-alpine
-
-# Set working directory
+# ---- p2pShare signaling server image ----
+FROM node:20-alpine AS base
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install dependencies first for better layer caching
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy application code
+# Copy application source
 COPY server.js ./
+COPY config.js ./
+COPY api.js ./
+COPY turn.js ./
+COPY .env ./
 
-# Expose WebSocket port
-EXPOSE 8081
+ENV NODE_ENV=production
+ENV PORT=8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:8081', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
+EXPOSE 8080
 
-# Run as non-root user
+# Basic container-level healthcheck hitting the /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||8080)+'/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
+
 USER node
-
-# Start server
 CMD ["node", "server.js"]
